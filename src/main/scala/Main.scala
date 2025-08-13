@@ -9,140 +9,69 @@ import java.nio.file.Path
 import pureconfig.ConfigSource
 import pureconfig.module.catseffect._
 
+// The subscribe command no longer needs messageCount
 enum Command {
   case Publish(config: PublisherConfig)
-  case Subscribe(
-      name: String,
-      topic: String,
-      lastValue: Boolean,
-      timeout: FiniteDuration
-  )
+  case Subscribe(name: String, topic: String, lastValue: Boolean, timeout: FiniteDuration)
 }
 
-case class PublisherConfig(
-    numMessages: Int,
-    destinationName: String,
-    isTopic: Boolean
-)
-
-object Main
-    extends CommandIOApp(
+object Main extends CommandIOApp(
       name = "artemis-cli",
       header = "A CLI for interacting with ActiveMQ Artemis."
     ) {
   private val logger = LoggerFactory.getLogger(getClass)
 
-  // Centralized run method to handle command logic
-  def run(appConfig: AppConfig, command: Command): IO[ExitCode] =
-    command match {
-      case Command.Publish(config) =>
-        val publisher = new PublisherLib(appConfig)
-        for {
-          _ <- IO(
-            logger.info(s"Executing publish command with config: $config")
-          )
-          _ <- publisher.publish(config)
-          _ <- IO(logger.info("Publisher finished successfully."))
-        } yield ExitCode.Success
+  def run(command: Command, configFile: Path): IO[ExitCode] = {
+    for {
+      appConfig <- IO.fromEither(
+        ConfigSource.file(configFile).at("app").load[AppConfig]
+          .leftMap(failures => new RuntimeException(s"Failed to load config: ${failures.prettyPrint()}"))
+      )
+      exitCode <- command match {
+        case Command.Publish(config) =>
+          val publisher = new PublisherLib(appConfig)
+          publisher.publish(config).as(ExitCode.Success)
 
-      case Command.Subscribe(name, topic, lastValue, timeout) =>
-        val subscriber = new SubscriberLib(appConfig)
-        for {
-          _ <- IO(
-            logger.info(
-              s"Executing subscribe command for '$name' on topic '$topic' (Last Value: $lastValue, Timeout: $timeout)"
-            )
-          )
-          _ <- subscriber.subscribe(name, topic, lastValue, timeout)
-        } yield ExitCode.Success
-    }
+        // The call to subscribe is now simpler
+        case Command.Subscribe(name, topic, lastValue, timeout) =>
+          val subscriber = new SubscriberLib(appConfig)
+          subscriber.subscribe(name, topic, lastValue, timeout).as(ExitCode.Success)
+      }
+    } yield exitCode
+  }
 
-  private val configFileOpt: Opts[Path] = Opts.option[Path](
-    "config",
-    short = "c",
-    help = "Path to the application.conf file."
-  )
+  private val configFileOpt: Opts[Path] = Opts.option[Path]("config", short = "c", help = "Path to the application.conf file.")
 
-  // Options for the 'publish' subcommand
-  private val publishOpts: Opts[Command.Publish] =
+  private val publishOpts: Opts[Command] =
     Opts.subcommand("publish", "Publish messages to a destination.") {
-      val messagesOpt = Opts
-        .option[Int](
-          "messages",
-          short = "m",
-          help = "Number of messages to send."
-        )
-        .withDefault(1)
-      val destinationOpt = Opts.option[String](
-        "destination",
-        short = "d",
-        help = "Name of the destination (topic or queue)."
-      )
-      val typeOpt = Opts
-        .option[String](
-          "type",
-          short = "t",
-          help = "Destination type: 'topic' or 'queue'."
-        )
-        .mapValidated {
-          case "topic" => true.validNel
-          case "queue" => false.validNel
-          case other =>
-            s"Invalid destination type: '$other'. Must be 'topic' or 'queue'.".invalidNel
-        }
-      (messagesOpt, destinationOpt, typeOpt)
-        .mapN(PublisherConfig.apply)
-        .map(Command.Publish.apply)
+      val destinationOpt = Opts.option[String]("destination", short = "d", help = "Name of the destination (topic or queue).")
+      val typeOpt = Opts.option[String]("type", short = "t", help = "Destination type: 'topic' or 'queue'.").mapValidated {
+        case "topic" => true.validNel; case "queue" => false.validNel
+        case other   => s"Invalid type: '$other'".invalidNel
+      }
+      val messagesOpt = Opts.option[Int]("messages", short = "m", help = "Number of messages to send.").withDefault(1)
+      val payloadOpt = Opts.option[String]("payload", help = "JSON payload for the message body.").orNone
+
+      (destinationOpt, typeOpt, messagesOpt, payloadOpt).mapN(PublisherConfig.apply).map(Command.Publish.apply)
     }
 
-  // Options for the 'subscribe' subcommand
-  private val subscribeOpts: Opts[Command.Subscribe] =
+  // The --messages option has been removed from subscribe
+  private val subscribeOpts: Opts[Command] =
     Opts.subcommand("subscribe", "Subscribe to a durable topic.") {
-      val nameOpt = Opts.option[String](
-        "name",
-        short = "n",
-        help = "A unique name for the client ID and durable subscription."
-      )
-      val topicOpt = Opts
-        .option[String](
-          "topic",
-          help = "The name of the topic to subscribe to."
-        )
-        .withDefault("DurableNewsTopic")
-      val lastValueOpt = Opts
-        .flag("last-value", "Enable last-value semantics for the topic.")
-        .orFalse
-      val timeoutOpt = Opts
-        .option[Long](
-          "timeout",
-          help = "Timeout in seconds to wait for a message."
-        )
-        .withDefault(5L)
-        .map(FiniteDuration(_, TimeUnit.SECONDS))
-      (nameOpt, topicOpt, lastValueOpt, timeoutOpt).mapN(
-        Command.Subscribe.apply
-      )
+      val nameOpt = Opts.option[String]("name", short = "n", help = "A unique name for the client ID and durable subscription.")
+      val topicOpt = Opts.option[String]("topic", help = "The name of the topic to subscribe to.")
+      val lastValueOpt = Opts.flag("last-value", "Connect to a last-value queue instead of a standard topic.").orFalse
+      val timeoutOpt = Opts.option[Long]("timeout", help = "Timeout in seconds to wait for a message.").withDefault(5L).map(FiniteDuration(_, TimeUnit.SECONDS))
+
+      (nameOpt, topicOpt, lastValueOpt, timeoutOpt).mapN(Command.Subscribe.apply)
     }
 
-  // The main entry point now parses the global config option first, then the subcommand.
   override def main: Opts[IO[ExitCode]] = {
-    val commandOpts: Opts[Command] = publishOpts orElse subscribeOpts
-
-    (configFileOpt, commandOpts).mapN { (configPath, command) =>
-      val loadConfig = IO.fromEither(
-        ConfigSource
-          .file(configPath)
-          .at("app")
-          .load[AppConfig]
-          .leftMap(failures => new RuntimeException(failures.prettyPrint()))
-      )
-
-      loadConfig
-        .flatMap(appConfig => run(appConfig, command))
-        .handleErrorWith { err =>
-          IO(logger.error(s"Command failed: ${err.getMessage}", err))
-            .as(ExitCode.Error)
-        }
+    val commandOpts = publishOpts orElse subscribeOpts
+    (commandOpts, configFileOpt).tupled.map { case (command, configFile) =>
+      run(command, configFile).handleErrorWith { err =>
+        IO(logger.error(s"Command failed: ${err.getMessage}", err)).as(ExitCode.Error)
+      }
     }
   }
 }
