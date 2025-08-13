@@ -1,0 +1,139 @@
+version: "3.8"
+
+services:
+  artemis1:
+    image: apache/activemq-artemis:latest
+    container_name: artemis1
+    hostname: artemis1
+    ports:
+      - "8161:8161"
+      - "5672:5672"
+      - "61616:61616"
+    environment:
+      # Cluster configuration
+      ARTEMIS_CLUSTER_PASSWORD: myclusterpassword
+      ARTEMIS_CLUSTER_USER: myclusteruser
+      # Broker-specific settings
+      ARTEMIS_INSTANCE_NAME: artemis1
+
+      # --- Web Console User Configuration ---
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      ARTEMIS_ROLE: admin,amq
+    volumes:
+      - artemis1-data:/var/lib/artemis/data
+      - ~/apache-mq-artemis/artemis1:/var/lib/artemis-instance/etc-override
+    networks:
+      - artemis-net
+
+  artemis2:
+    image: apache/activemq-artemis:latest
+    container_name: artemis2
+    hostname: artemis2
+    ports:
+      - "5673:5672"
+      - "61617:61616"
+
+    environment:
+      ARTEMIS_CLUSTER_PASSWORD: myclusterpassword
+      ARTEMIS_CLUSTER_USER: myclusteruser
+      ARTEMIS_INSTANCE_NAME: artemis2
+      # --- Web Console User Configuration ---
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      ARTEMIS_ROLE: admin,amq
+    volumes:
+      - artemis2-data:/var/lib/artemis/data
+      - ~/apache-mq-artemis/artemis2:/var/lib/artemis-instance/etc-override
+    networks:
+      - artemis-net
+
+  artemis3:
+    image: apache/activemq-artemis:latest
+    container_name: artemis3
+    hostname: artemis3
+    ports:
+      - "5674:5672"
+      - "61618:61616"
+    environment:
+      ARTEMIS_CLUSTER_PASSWORD: myclusterpassword
+      ARTEMIS_CLUSTER_USER: myclusteruser
+      ARTEMIS_INSTANCE_NAME: artemis3
+      # --- Web Console User Configuration ---
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      ARTEMIS_ROLE: admin,amq
+    volumes:
+      - artemis3-data:/var/lib/artemis/data
+      - ~/apache-mq-artemis/artemis3:/var/lib/artemis-instance/etc-override
+    networks:
+      - artemis-net
+
+  artemis4:
+    image: apache/activemq-artemis:latest
+    container_name: artemis4
+    hostname: artemis4
+    ports:
+      - "5675:5672"
+      - "61619:61616"
+    environment:
+      ARTEMIS_CLUSTER_PASSWORD: myclusterpassword
+      ARTEMIS_CLUSTER_USER: myclusteruser
+      ARTEMIS_INSTANCE_NAME: artemis4
+      # --- Web Console User Configuration ---
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      ARTEMIS_ROLE: admin,amq
+    volumes:
+      - artemis4-data:/var/lib/artemis/data
+      - ~/apache-mq-artemis/artemis4:/var/lib/artemis-instance/etc-override
+    networks:
+      - artemis-net
+
+  artemis5:
+    image: apache/activemq-artemis:latest
+    hostname: artemis5
+    container_name: artemis5
+    ports:
+      - "5676:5672"
+      - "61610:61616"
+    environment:
+      ARTEMIS_CLUSTER_PASSWORD: myclusterpassword
+      ARTEMIS_CLUSTER_USER: myclusteruser
+      ARTEMIS_INSTANCE_NAME: artemis5
+      # --- Web Console User Configuration ---
+      ARTEMIS_USER: admin
+      ARTEMIS_PASSWORD: admin
+      ARTEMIS_ROLE: admin,amq
+    volumes:
+      - artemis5-data:/var/lib/artemis/data
+      - ~/apache-mq-artemis/artemis5:/var/lib/artemis-instance/etc-override
+    networks:
+      - artemis-net
+
+  client1:
+    image: eclipse-temurin:21-jre-jammy
+    container_name: client1
+    hostname: client1
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - artemis-net
+
+  client2:
+    image: eclipse-temurin:21-jre-jammy
+    hostname: client2
+    container_name: client2
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - artemis-net
+
+volumes:
+  artemis1-data:
+  artemis2-data:
+  artemis3-data:
+  artemis4-data:
+  artemis5-data:
+
+networks:
+  artemis-net:
+    driver: bridge
