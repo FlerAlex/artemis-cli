@@ -12,26 +12,26 @@ class PublisherLib(config: AppConfig) {
   // Resources for Connection, Session, and Producer
   private def makeConnection: Resource[IO, Connection] =
     Resource.make {
-      IO.blocking { // WRAP
+      IO.blocking { 
         val conn = connectionFactory.createConnection(config.credentials.user, config.credentials.pass)
         conn.start()
         logger.info("Successfully connected to the broker.")
         conn
       }
-    } { conn => IO.blocking(conn.close()) } // WRAP
+    } { conn => IO.blocking(conn.close()) } 
 
   private def makeSession(connection: Connection): Resource[IO, Session] =
-    Resource.make(IO.blocking(connection.createSession(false, Session.AUTO_ACKNOWLEDGE))) { session => // WRAP
-      IO.blocking(session.close()) // WRAP
+    Resource.make(IO.blocking(connection.createSession(false, Session.AUTO_ACKNOWLEDGE))) { session => 
+      IO.blocking(session.close()) 
     }
 
   private def makeProducer(session: Session, destination: Destination): Resource[IO, MessageProducer] =
-    Resource.make(IO.blocking(session.createProducer(destination))) { producer => // WRAP
-      IO.blocking(producer.close()) // WRAP
+    Resource.make(IO.blocking(session.createProducer(destination))) { producer => 
+      IO.blocking(producer.close()) 
     }
 
   private def createDestination(session: Session, pubConfig: PublisherConfig): IO[Destination] =
-    IO.blocking { // WRAP
+    IO.blocking { 
       if (pubConfig.isTopic) session.createTopic(pubConfig.destinationName)
       else session.createQueue(pubConfig.destinationName)
     }
@@ -40,10 +40,10 @@ class PublisherLib(config: AppConfig) {
     (1 to pubConfig.numMessages).toList.traverse_ { i =>
       val messageText = pubConfig.payload.getOrElse(s"Message #${i} to ${pubConfig.destinationName}")
       for {
-        message <- IO.blocking(session.createTextMessage(messageText)) // WRAP
-        _       <- IO.blocking(producer.send(message)) // WRAP
+        message <- IO.blocking(session.createTextMessage(messageText)) 
+        _       <- IO.blocking(producer.send(message)) 
         _       <- IO(logger.info(s"Sent message: '$messageText'"))
-        _       <- IO.sleep(500.millis) // This is non-blocking, so no wrapper needed
+        _       <- IO.sleep(500.millis) 
       } yield ()
     }
   }
@@ -58,7 +58,7 @@ class PublisherLib(config: AppConfig) {
 
     resources.use { case (session, producer) =>
       for {
-        _ <- IO.blocking(producer.setDeliveryMode(DeliveryMode.PERSISTENT)) // WRAP
+        _ <- IO.blocking(producer.setDeliveryMode(DeliveryMode.PERSISTENT)) 
         _ <- IO(logger.info(s"Publisher ready. Sending ${pubConfig.numMessages} messages..."))
         _ <- sendMessages(session, producer, pubConfig)
         _ <- IO(logger.info("Finished sending all messages."))

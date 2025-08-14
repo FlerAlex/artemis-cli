@@ -9,7 +9,6 @@ import java.nio.file.Path
 import pureconfig.ConfigSource
 import pureconfig.module.catseffect._
 
-// The subscribe command no longer needs messageCount
 enum Command {
   case Publish(config: PublisherConfig)
   case Subscribe(name: String, topic: String, lastValue: Boolean, timeout: FiniteDuration)
@@ -32,7 +31,6 @@ object Main extends CommandIOApp(
           val publisher = new PublisherLib(appConfig)
           publisher.publish(config).as(ExitCode.Success)
 
-        // The call to subscribe is now simpler
         case Command.Subscribe(name, topic, lastValue, timeout) =>
           val subscriber = new SubscriberLib(appConfig)
           subscriber.subscribe(name, topic, lastValue, timeout).as(ExitCode.Success)
@@ -55,7 +53,6 @@ object Main extends CommandIOApp(
       (destinationOpt, typeOpt, messagesOpt, payloadOpt).mapN(PublisherConfig.apply).map(Command.Publish.apply)
     }
 
-  // The --messages option has been removed from subscribe
   private val subscribeOpts: Opts[Command] =
     Opts.subcommand("subscribe", "Subscribe to a durable topic.") {
       val nameOpt = Opts.option[String]("name", short = "n", help = "A unique name for the client ID and durable subscription.")

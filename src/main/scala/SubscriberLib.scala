@@ -9,28 +9,26 @@ class SubscriberLib(config: AppConfig) {
   private val logger = LoggerFactory.getLogger(getClass)
   private val connectionFactory = new ActiveMQConnectionFactory(config.brokerUrl)
 
-  // Correctly wrapped resource management
   private def makeConnection(clientId: String): Resource[IO, Connection] = Resource.make(
-    IO.blocking { // WRAP
+    IO.blocking { 
       val conn = connectionFactory.createConnection(config.credentials.user, config.credentials.pass)
       conn.setClientID(clientId)
       conn.start()
       logger.info(s"Successfully connected to broker with Client ID: $clientId")
       conn
     }
-  )(conn => IO.blocking(conn.close())) // WRAP
+  )(conn => IO.blocking(conn.close())) 
 
   private def makeSession(connection: Connection): Resource[IO, Session] = Resource.make(
-    IO.blocking(connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) // WRAP
-  )(session => IO.blocking(session.close())) // WRAP
+    IO.blocking(connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) 
+  )(session => IO.blocking(session.close())) 
 
   private def makeConsumer(session: Session, topic: Topic, subName: String): Resource[IO, MessageConsumer] = Resource.make(
-    IO.blocking(session.createSharedDurableConsumer(topic, subName)) // WRAP
-  )(consumer => IO.blocking(consumer.close())) // WRAP
+    IO.blocking(session.createSharedDurableConsumer(topic, subName)) 
+  )(consumer => IO.blocking(consumer.close())) 
 
-  // The receive loops now correctly wrap the blocking `receive` call
   private def receiveAllLoop(consumer: MessageConsumer): IO[Unit] = {
-    IO.blocking(Option(consumer.receive(1000L))).flatMap { // WRAP
+    IO.blocking(Option(consumer.receive(1000L))).flatMap { 
       case Some(message: TextMessage) =>
         IO(logger.info(s"Received: '${message.getText}'")) >> receiveAllLoop(consumer)
       case Some(_) =>
@@ -42,7 +40,7 @@ class SubscriberLib(config: AppConfig) {
 
   private def receiveLastValue(consumer: MessageConsumer, timeout: FiniteDuration): IO[Unit] = {
     IO(logger.info(s"Waiting for last-value message for up to ${timeout.toSeconds} seconds...")) >>
-    IO.blocking(Option(consumer.receive(timeout.toMillis))).flatMap { // WRAP
+    IO.blocking(Option(consumer.receive(timeout.toMillis))).flatMap { 
       case Some(message: TextMessage) => IO(logger.info(s"Received last value: '${message.getText}'"))
       case Some(_)                    => IO(logger.warn("Received a non-text last-value message."))
       case None                       => IO(logger.warn("No message received within the timeout."))
@@ -53,7 +51,7 @@ class SubscriberLib(config: AppConfig) {
     val resources = for {
       connection <- makeConnection(name)
       session    <- makeSession(connection)
-      topic      <- Resource.eval(IO.blocking(session.createTopic(topicName))) // WRAP
+      topic      <- Resource.eval(IO.blocking(session.createTopic(topicName))) 
       consumer   <- makeConsumer(session, topic, name)
     } yield consumer
 
