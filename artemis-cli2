@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# --- artemis-cli Wrapper Script ---
+# This script locates the necessary files and executes the Java application.
+# It automatically detects and uses an AppCDS archive for faster startup if available.
+
+set -e # Exit immediately if a command exits with a non-zero status.
+
+# Find the directory where the script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Define paths to the required files
+JAR_FILE=$(find "$SCRIPT_DIR" -name "artemis-cli-*.jar" | head -n 1)
+APP_CONFIG="$SCRIPT_DIR/config/application.conf"
+LOG_CONFIG="$SCRIPT_DIR/config/logback.xml"
+ARCHIVE_FILE="$SCRIPT_DIR/app.jsa" # Path to the AppCDS archive
+
+# --- File Existence Checks ---
+if [ -z "$JAR_FILE" ]; then
+  echo "Error: Could not find the application JAR file (artemis-cli-assembly-*.jar)."
+  exit 1
+fi
+
+if [ ! -f "$APP_CONFIG" ]; then
+  echo "Error: Application config not found at $APP_CONFIG"
+  exit 1
+fi
+
+if [ ! -f "$LOG_CONFIG" ]; then
+  echo "Error: Logback config not found at $LOG_CONFIG"
+  exit 1
+fi
+
+# --- Execute the Java Application ---
+# Check if the AppCDS archive exists and use it for faster startup.
+# Otherwise, fall back to a standard run.
+
+if [ -f "$ARCHIVE_FILE" ]; then
+  # AppCDS archive found - run with optimized flags
+  echo "--> AppCDS archive found. Running with optimized startup."
+  java -Dlogback.configurationFile="$LOG_CONFIG" \
+       -Xshare:on \
+       -XX:SharedArchiveFile="$ARCHIVE_FILE" \
+       -jar "$JAR_FILE" \
+       --config "$APP_CONFIG" \
+       "$@"
+else
+  # No archive found - run normally
+  echo "--> AppCDS archive not found. Running with standard startup. (Hint: Run the 'archive' command to create one)"
+  java -Dlogback.configurationFile="$LOG_config" \
+       -jar "$JAR_FILE" \
+       --config "$APP_CONFIG" \
+       "$@"
+fi
+
